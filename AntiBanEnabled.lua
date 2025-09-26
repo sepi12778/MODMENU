@@ -26,7 +26,17 @@ getgenv().UltimateAntiBanLoaded_v6_1 = true
 --// Compatibility functions for various executors
 local gethui = gethui or function() return CoreGui:FindFirstChild("RobloxGui") or CoreGui end
 local getscript = getscript or function() return script end
-local setclipboard = setclipboard or function() end
+local setclipboard = setclipboard or function(text)
+    -- Fallback for executors without setclipboard
+    pcall(function()
+        local TextBox = Instance.new("TextBox")
+        TextBox.Text = tostring(text)
+        TextBox.Parent = CoreGui
+        TextBox:CaptureFocus()
+        TextBox:SelectAll()
+        TextBox:Destroy()
+    end)
+end
 local is_syn_function = is_syn_function or function() return false end
 local getconnections = getconnections or function() return {} end
 local getscripts = getscripts or function() return {} end
@@ -39,7 +49,7 @@ local ProtectedObjects = {}
 local BlockedRemoteCount = 0
 local BlockedKickCount = 0
 local HeuristicThreshold = 10 -- Remote blocking sensitivity
-local IsDesyncing = false -- فلگ برای جلوگیری از اجرای همزمان ضد کیک
+local IsDesyncing = false -- Flag to prevent multiple concurrent anti-kick executions
 
 --// Utility Functions
 local function Notify(message, duration)
@@ -53,80 +63,79 @@ local function Notify(message, duration)
     end)
 end
 
---// GUI - (کد GUI بدون تغییر باقی می‌ماند، برای خلاصه‌سازی حذف شده است)
--- ... [کد کامل GUI از اسکریپت اصلی را اینجا کپی کنید] ...
+--// GUI - (کد کامل GUI در اینجا قرار دارد)
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "AntiBanGUI_" .. HttpService:GenerateGUID(false)
 ScreenGui.Parent = gethui()
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Global
 table.insert(ProtectedObjects, ScreenGui)
-local MenuFrame=Instance.new("Frame")
-local Title=Instance.new("TextLabel")
-local CloseButton=Instance.new("TextButton")
-local ToggleButton=Instance.new("TextButton")
-local ClearLogsButton=Instance.new("TextButton")
-local CopyIDButton=Instance.new("TextButton")
-local StatusPanel=Instance.new("TextLabel")
-local OpenButton=Instance.new("TextButton")
-MenuFrame.Size=UDim2.new(0,260,0,180)
-MenuFrame.Position=UDim2.new(0,10,0,10)
-MenuFrame.BackgroundColor3=Color3.fromRGB(28,29,36)
-MenuFrame.BorderColor3=Color3.fromRGB(150,150,220)
-MenuFrame.BorderSizePixel=2
-MenuFrame.Draggable=true
-MenuFrame.Active=true
-MenuFrame.Visible=true
-MenuFrame.Parent=ScreenGui
-Title.Size=UDim2.new(1,0,0,30)
-Title.BackgroundColor3=Color3.fromRGB(38,39,48)
-Title.TextColor3=Color3.fromRGB(255,255,255)
-Title.Font=Enum.Font.SourceSansSemibold
-Title.Text="Aegis Anti-Ban v6.1"
-Title.Parent=MenuFrame
-CloseButton.Size=UDim2.new(0,25,0,25)
-CloseButton.Position=UDim2.new(1,-30,0,2.5)
-CloseButton.BackgroundColor3=Color3.fromRGB(200,50,50)
-CloseButton.Text="X"
-CloseButton.Font=Enum.Font.SourceSansBold
-CloseButton.TextColor3=Color3.fromRGB(255,255,255)
-CloseButton.Parent=Title
-ToggleButton.Size=UDim2.new(0,220,0,35)
-ToggleButton.Position=UDim2.new(0.5,-110,0,40)
-ToggleButton.BackgroundColor3=Color3.fromRGB(60,180,75)
-ToggleButton.Text="Protection: ON"
-ToggleButton.Font=Enum.Font.SourceSansBold
-ToggleButton.TextColor3=Color3.fromRGB(255,255,255)
-ToggleButton.Parent=MenuFrame
-ClearLogsButton.Size=UDim2.new(0,105,0,30)
-ClearLogsButton.Position=UDim2.new(0.5,-110,0,135)
-ClearLogsButton.BackgroundColor3=Color3.fromRGB(80,100,180)
-ClearLogsButton.Text="Clear Logs"
-ClearLogsButton.Font=Enum.Font.SourceSans
-ClearLogsButton.TextColor3=Color3.fromRGB(255,255,255)
-ClearLogsButton.Parent=MenuFrame
-CopyIDButton.Size=UDim2.new(0,105,0,30)
-CopyIDButton.Position=UDim2.new(0.5,5,0,135)
-CopyIDButton.BackgroundColor3=Color3.fromRGB(180,120,80)
-CopyIDButton.Text="Copy UserID"
-CopyIDButton.Font=Enum.Font.SourceSans
-CopyIDButton.TextColor3=Color3.fromRGB(255,255,255)
-CopyIDButton.Parent=MenuFrame
-StatusPanel.Size=UDim2.new(1,-20,0,45)
-StatusPanel.Position=UDim2.new(0.5,-((MenuFrame.AbsoluteSize.X-20)/2),0,85)
-StatusPanel.BackgroundColor3=Color3.fromRGB(25,27,35)
-StatusPanel.TextColor3=Color3.fromRGB(200,200,200)
-StatusPanel.Font=Enum.Font.Code
-StatusPanel.TextXAlignment=Enum.TextXAlignment.Left
-StatusPanel.Text=" Status:\n  Kicks Blocked: 0 | Remotes Blocked: 0"
-StatusPanel.Parent=MenuFrame
-OpenButton.Size=UDim2.new(0,100,0,30)
-OpenButton.Position=UDim2.new(0,10,0,10)
-OpenButton.BackgroundColor3=Color3.fromRGB(50,50,60)
-OpenButton.Text="Open Menu"
-OpenButton.Font=Enum.Font.SourceSansBold
-OpenButton.TextColor3=Color3.fromRGB(255,255,255)
-OpenButton.Visible=false
-OpenButton.Parent=ScreenGui
+local MenuFrame = Instance.new("Frame")
+local Title = Instance.new("TextLabel")
+local CloseButton = Instance.new("TextButton")
+local ToggleButton = Instance.new("TextButton")
+local ClearLogsButton = Instance.new("TextButton")
+local CopyIDButton = Instance.new("TextButton")
+local StatusPanel = Instance.new("TextLabel")
+local OpenButton = Instance.new("TextButton")
+MenuFrame.Size = UDim2.new(0, 260, 0, 180)
+MenuFrame.Position = UDim2.new(0, 10, 0, 10)
+MenuFrame.BackgroundColor3 = Color3.fromRGB(28, 29, 36)
+MenuFrame.BorderColor3 = Color3.fromRGB(150, 150, 220)
+MenuFrame.BorderSizePixel = 2
+MenuFrame.Draggable = true
+MenuFrame.Active = true
+MenuFrame.Visible = true
+MenuFrame.Parent = ScreenGui
+Title.Size = UDim2.new(1, 0, 0, 30)
+Title.BackgroundColor3 = Color3.fromRGB(38, 39, 48)
+Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+Title.Font = Enum.Font.SourceSansSemibold
+Title.Text = "Aegis Anti-Ban v6.1"
+Title.Parent = MenuFrame
+CloseButton.Size = UDim2.new(0, 25, 0, 25)
+CloseButton.Position = UDim2.new(1, -30, 0, 2.5)
+CloseButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+CloseButton.Text = "X"
+CloseButton.Font = Enum.Font.SourceSansBold
+CloseButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+CloseButton.Parent = Title
+ToggleButton.Size = UDim2.new(0, 220, 0, 35)
+ToggleButton.Position = UDim2.new(0.5, -110, 0, 40)
+ToggleButton.BackgroundColor3 = Color3.fromRGB(60, 180, 75)
+ToggleButton.Text = "Protection: ON"
+ToggleButton.Font = Enum.Font.SourceSansBold
+ToggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+ToggleButton.Parent = MenuFrame
+ClearLogsButton.Size = UDim2.new(0, 105, 0, 30)
+ClearLogsButton.Position = UDim2.new(0.5, -110, 0, 135)
+ClearLogsButton.BackgroundColor3 = Color3.fromRGB(80, 100, 180)
+ClearLogsButton.Text = "Clear Logs"
+ClearLogsButton.Font = Enum.Font.SourceSans
+ClearLogsButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+ClearLogsButton.Parent = MenuFrame
+CopyIDButton.Size = UDim2.new(0, 105, 0, 30)
+CopyIDButton.Position = UDim2.new(0.5, 5, 0, 135)
+CopyIDButton.BackgroundColor3 = Color3.fromRGB(180, 120, 80)
+CopyIDButton.Text = "Copy UserID"
+CopyIDButton.Font = Enum.Font.SourceSans
+CopyIDButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+CopyIDButton.Parent = MenuFrame
+StatusPanel.Size = UDim2.new(1, -20, 0, 45)
+StatusPanel.Position = UDim2.new(0.5, -((MenuFrame.AbsoluteSize.X - 20) / 2), 0, 85)
+StatusPanel.BackgroundColor3 = Color3.fromRGB(25, 27, 35)
+StatusPanel.TextColor3 = Color3.fromRGB(200, 200, 200)
+StatusPanel.Font = Enum.Font.Code
+StatusPanel.TextXAlignment = Enum.TextXAlignment.Left
+StatusPanel.Text = " Status:\n  Kicks Blocked: 0 | Remotes Blocked: 0"
+StatusPanel.Parent = MenuFrame
+OpenButton.Size = UDim2.new(0, 100, 0, 30)
+OpenButton.Position = UDim2.new(0, 10, 0, 10)
+OpenButton.BackgroundColor3 = Color3.fromRGB(50, 50, 60)
+OpenButton.Text = "Open Menu"
+OpenButton.Font = Enum.Font.SourceSansBold
+OpenButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+OpenButton.Visible = false
+OpenButton.Parent = ScreenGui
 local function UpdateStatusPanel()
     StatusPanel.Text = string.format(" Status:\n  Kicks Blocked: %d | Remotes Blocked: %d", BlockedKickCount, BlockedRemoteCount)
 end
@@ -162,45 +171,48 @@ local function AnalyzeRemoteCall(remote, ...)
     return score
 end
 
---// لایه ۲: هوک کردن متامتدها (__namecall, __index, __newindex) - هسته اصلی دفاع
+--// لایه ۲: هوک کردن متامتدها (__namecall) - هسته اصلی دفاع
 OldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
-    -- بهینه سازی: بلافاصله اگر حفاظت خاموش است، خارج شو
+    -- بهینه سازی: اگر حفاظت خاموش است، بلافاصله خارج شو
     if not AntiBanEnabled then return OldNamecall(self, ...) end
 
     local Method = getnamecallmethod()
     
-    -- بهینه سازی: چک کردن سریع نوع متد قبل از عملیات‌های سنگین‌تر
+    -- [بخش اصلاح شده] شناسایی و جلوگیری از کیک شدن بدون فریز کردن بازی
     if (Method == "Kick" or Method == "Ban" or Method == "Remove") and self:IsA("Player") then
         BlockedKickCount = BlockedKickCount + 1
         UpdateStatusPanel()
         
-        -- بهینه سازی: استفاده از task.spawn برای جلوگیری از فریز شدن
+        -- اگر سرور قصد کیک کردن بازیکن محلی را داشت
         if self == LocalPlayer and not IsDesyncing then
             IsDesyncing = true
+            -- استفاده از task.spawn برای اجرای کد در یک ترد جداگانه و جلوگیری از فریز شدن
             task.spawn(function()
                 Notify("Anti-Kick engaged! Temporarily desyncing...")
                 local oldLimit = NetworkClient.OutgoingKBPSLimit
-                NetworkClient:SetOutgoingKBPSLimit(0.001)
+                NetworkClient:SetOutgoingKBPSLimit(0.001) -- محدود کردن پهنای باند خروجی برای قطع ارتباط موقت
                 task.wait(2.5) -- این wait دیگر بازی را فریز نمی‌کند
-                NetworkClient:SetOutgoingKBPSLimit(oldLimit) -- بازگرداندن به حالت قبلی
+                NetworkClient:SetOutgoingKBPSLimit(oldLimit or 1/0) -- بازگرداندن به حالت قبلی
                 Notify("Resynced with server. Kick evaded.")
                 IsDesyncing = false
             end)
         else
+            -- اگر سرور قصد کیک کردن بازیکن دیگری را داشت
             Notify(string.format("Blocked server attempt to '%s' player: %s", Method, self.Name))
         end
-        return nil -- دستور را به طور کامل بلاک می‌کند
+        return nil -- دستور کیک را به طور کامل بلاک می‌کند
     end
 
+    -- شناسایی و بلاک کردن ریموت‌های مشکوک
     if (Method == "FireServer" or Method == "InvokeServer") and (self:IsA("RemoteEvent") or self:IsA("RemoteFunction")) then
         local Args = {...}
         local suspiciousScore = AnalyzeRemoteCall(self, unpack(Args))
         if suspiciousScore >= HeuristicThreshold then
             BlockedRemoteCount = BlockedRemoteCount + 1
             UpdateStatusPanel()
-            -- بهینه سازی: نوتیفیکیشن را در یک ترد جدید اجرا می‌کنیم تا لگ به حداقل برسد
+            -- نوتیفیکیشن را در یک ترد جدید اجرا می‌کنیم تا لگ به حداقل برسد
             task.spawn(Notify, string.format("Blocked suspicious remote '%s' (Score: %d)", self.Name, suspiciousScore))
-            return nil
+            return nil -- ریموت مشکوک را بلاک می‌کند
         end
         -- پاس دادن آرگومان‌های اصلی اگر مشکوک نبود
         return OldNamecall(self, unpack(Args))
@@ -209,11 +221,6 @@ OldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
     -- اجرای تابع اصلی برای بقیه موارد
     return OldNamecall(self, ...)
 end))
-
--- ... بقیه لایه‌ها (از لایه ۳ به بعد) بدون تغییر هستند ...
--- آنها به اندازه کافی بهینه هستند و دلیل اصلی لگ نبودند.
--- شما می‌توانید ادامه کد اصلی خود را از اینجا کپی کنید.
-
 
 --// لایه ۳: محافظت پیشرفته از کاراکتر
 local function ProtectCharacter(character)
@@ -231,7 +238,7 @@ if LocalPlayer.Character then ProtectCharacter(LocalPlayer.Character) end
 LocalPlayer.CharacterAdded:Connect(ProtectCharacter)
 
 --// لایه ۴: مانیتورینگ و بازگردانی اشیاء حذف شده
-LocalPlayer.ChildAdded:Connect(function(child)
+LocalPlayer.PlayerGui.ChildAdded:Connect(function(child)
     if child:IsA("ScreenGui") or child:IsA("LocalScript") then
         child.AncestryChanged:Connect(function(_, parent)
             if AntiBanEnabled and not parent and not gethui():IsAncestorOf(child) then
@@ -247,8 +254,8 @@ end)
 pcall(function()
     getscript().Name = HttpService:GenerateGUID(false) -- نام کاملا تصادفی برای جلوگیری از شناسایی
     for _, script in ipairs(getscripts()) do
-        if script ~= getscript() and script.Parent ~= CoreGui then
-            script:Destroy()
+        if script ~= getscript() and script.Parent ~= CoreGui and script.Parent ~= gethui() then
+            pcall(function() script:Destroy() end)
         end
     end
     Notify("Cleared potentially malicious local scripts.")
@@ -260,7 +267,7 @@ pcall(function()
     for _, signal in ipairs(signals_to_spoof) do
         for _, connection in ipairs(getconnections(signal)) do
             if connection.Function and not is_syn_function(connection.Function) then
-                connection:Disable()
+                pcall(function() connection:Disable() end)
             end
         end
     end
@@ -269,8 +276,8 @@ end)
 
 --// لایه ۷: دور زدن لاگ چت و وضعیت‌های کاراکتر
 pcall(function()
-    local old_chatted = LocalPlayer.Chatted
-    hookfunction(old_chatted, newcclosure(function(...)
+    local old_chatted
+    old_chatted = hookfunction(LocalPlayer.Chatted, newcclosure(function(...)
         local args = {...}
         if AntiBanEnabled and args[1] and args[1]:sub(1, 1) == "/" then
             Notify("Blocked a chat command from being logged.")
@@ -282,8 +289,8 @@ end)
 LocalPlayer.CharacterAdded:Connect(function(char)
     local humanoid = char:WaitForChild("Humanoid")
     pcall(function()
-        local old_changestate = humanoid.ChangeState
-        hookfunction(old_changestate, newcclosure(function(self, state)
+        local old_changestate
+        old_changestate = hookfunction(humanoid.ChangeState, newcclosure(function(self, state)
             if AntiBanEnabled and state == Enum.HumanoidStateType.StrafingNoPhysics then
                 Notify("Blocked a suspicious humanoid state change.")
                 return
@@ -301,21 +308,23 @@ if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") th
 end
 RunService.Heartbeat:Connect(function()
     if not AntiBanEnabled then return end
-    local char = LocalPlayer.Character
-    if char and char:FindFirstChild("Humanoid") then
-        local humanoid = char.Humanoid
-        if humanoid.WalkSpeed < 0 or humanoid.WalkSpeed > 250 then
-            humanoid.WalkSpeed = secureValues.WalkSpeed
-            Notify(string.format("Corrected external WalkSpeed tampering (restored to %d).", secureValues.WalkSpeed))
+    pcall(function()
+        local char = LocalPlayer.Character
+        if char and char:FindFirstChild("Humanoid") then
+            local humanoid = char.Humanoid
+            if humanoid.WalkSpeed < 0 or humanoid.WalkSpeed > 250 then
+                humanoid.WalkSpeed = secureValues.WalkSpeed
+                Notify(string.format("Corrected external WalkSpeed tampering (restored to %d).", secureValues.WalkSpeed))
+            end
+            if humanoid.JumpPower < 0 or humanoid.JumpPower > 250 then
+                humanoid.JumpPower = secureValues.JumpPower
+                Notify(string.format("Corrected external JumpPower tampering (restored to %d).", secureValues.JumpPower))
+            end
         end
-        if humanoid.JumpPower < 0 or humanoid.JumpPower > 250 then
-            humanoid.JumpPower = secureValues.JumpPower
-            Notify(string.format("Corrected external JumpPower tampering (restored to %d).", secureValues.JumpPower))
-        end
-    end
+    end)
 end)
 
---// لایه ۹: [جدید] جعل متادیتا (Metadata Spoofing)
+--// لایه ۹: جعل متادیتا (Metadata Spoofing)
 pcall(function()
     local old_os_clock = os.clock
     local old_stats_value = Stats.Report.GetValue
@@ -335,18 +344,22 @@ pcall(function()
     Notify("Metadata spoofing is active.")
 end)
 
---// لایه ۱۰: [جدید] ضد دیباگ (Anti-Debugging)
-StarterGui:RegisterSetCore("DevConsoleVisible", function(visible)
-    if AntiBanEnabled and visible then
-        Notify("Anti-cheat may detect open DevConsole!", 10)
-    end
+--// لایه ۱۰: ضد دیباگ (Anti-Debugging)
+pcall(function()
+    StarterGui:RegisterSetCore("DevConsoleVisible", function(visible)
+        if AntiBanEnabled and visible then
+            Notify("Anti-cheat may detect open DevConsole!", 10)
+        end
+    end)
 end)
 
---// لایه ۱۱: [جدید] پاکسازی لاگ‌ها (Log Sanitization)
+--// لایه ۱۱: پاکسازی لاگ‌ها (Log Sanitization)
 LogService.MessageOut:Connect(function(message, type)
     if AntiBanEnabled and (type == Enum.MessageType.MessageError or type == Enum.MessageType.MessageWarning) then
         if message:find("Aegis") or message:find("Anti-Ban") or message:find("hook") then
+            -- This is intentional, do nothing to our own logs/errors
         else
+            -- You can add logic here to suppress other specific errors if needed
         end
     end
 end)
@@ -358,8 +371,6 @@ print("Aegis Anti-Ban Loaded. Control menu is on the top-left.")
 
 game:BindToClose(function()
     if OldNamecall then hookmetamethod(game, "__namecall", OldNamecall) end
-    if OldIndex then hookmetamethod(game, "__index", OldIndex) end
-    if OldNewIndex then hookmetamethod(game, "__newindex", OldNewIndex) end
     getgenv().UltimateAntiBanLoaded_v6_1 = false
     if ScreenGui and ScreenGui.Parent then ScreenGui:Destroy() end
     print("Aegis Anti-Ban has been safely unloaded.")
